@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pion WebRTC App</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div id="join-screen">
+        <input type="text" id="name" placeholder="Enter your name">
+        <button id="join-btn">Join</button>
+    </div>
+    <div id="participant-view" style="display: none;">
+        <div id="videos"></div>
+        <div id="controls">
+            <button id="mute-btn">Mute</button>
+            <button id="video-btn">Stop Video</button>
+        </div>
+    </div>
+    <script src="app.js"></script>
+</body>
+</html>
