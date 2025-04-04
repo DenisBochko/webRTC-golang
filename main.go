@@ -238,7 +238,7 @@ func websocketHandler(w http.ResponseWriter, r *http.Request) {
 
 	c := &threadSafeWriter{unsafeConn, sync.Mutex{}}
 
-	// When this frame returns close the Websocket
+	// Когда этот frame вернется, закройте Websocket.
 	defer c.Close() //nolint
 
 	// Create new PeerConnection
@@ -251,7 +251,7 @@ func websocketHandler(w http.ResponseWriter, r *http.Request) {
 	// When this frame returns close the PeerConnection
 	defer peerConnection.Close() //nolint
 
-	// Accept one audio and one video track incoming
+	// Принимает одну аудио- и одну видеодорожку входящего сигнала
 	for _, typ := range []webrtc.RTPCodecType{webrtc.RTPCodecTypeVideo, webrtc.RTPCodecTypeAudio} {
 		if _, err := peerConnection.AddTransceiverFromKind(typ, webrtc.RTPTransceiverInit{
 			Direction: webrtc.RTPTransceiverDirectionRecvonly,
@@ -261,18 +261,18 @@ func websocketHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Add our new PeerConnection to global list
+	// Добавьте наш новый PeerConnection в глобальный список
 	listLock.Lock()
 	peerConnections = append(peerConnections, peerConnectionState{peerConnection, c})
 	listLock.Unlock()
 
-	// Trickle ICE. Emit server candidate to client
+	// Trickle ICE. Передача кандидата сервера клиенту
 	peerConnection.OnICECandidate(func(i *webrtc.ICECandidate) {
 		if i == nil {
 			return
 		}
-		// If you are serializing a candidate make sure to use ToJSON
-		// Using Marshal will result in errors around `sdpMid`
+		// Если вы сериализуете кандидата, обязательно используйте ToJSON
+		// Использование Marshal приведет к ошибкам вокруг `sdpMid`
 		candidateString, err := json.Marshal(i.ToJSON())
 		if err != nil {
 			log.Errorf("Failed to marshal candidate to json: %v", err)
@@ -289,7 +289,7 @@ func websocketHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	})
 
-	// If PeerConnection is closed remove it from global list
+	// Если PeerConnection закрыт, удалите его из глобального списка.
 	peerConnection.OnConnectionStateChange(func(p webrtc.PeerConnectionState) {
 		log.Infof("Connection state change: %s", p)
 
