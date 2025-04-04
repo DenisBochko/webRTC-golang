@@ -28,8 +28,10 @@
         alert("Please enter a room name");
         return;
       }
-  
-      const wsURL = `ws://localhost:8080/websocket?room=${encodeURIComponent(room)}`;
+
+      // Определяем ws или wss в зависимости от протокола
+      const protocol = location.protocol === "https:" ? "wss" : "ws";
+      const wsURL = `${protocol}://${location.host}/websocket?room=${encodeURIComponent(room)}`;
       startConnection(wsURL);
     }
   
@@ -65,7 +67,7 @@
             }
           };
   
-          ws.onclose = () => alert("Websocket has closed");
+          ws.onclose = () => alert("WebSocket has closed");
           ws.onerror = evt => console.log("ERROR:", evt);
   
           ws.onmessage = evt => {
