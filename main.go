@@ -24,21 +24,71 @@ var (
 	}
 	indexTemplate = &template.Template{}
 
-	// блокировка для peerConnections и trackLocals
-	// listLock        sync.RWMutex
-	// peerConnections []peerConnectionState
-	// trackLocals     map[string]*webrtc.TrackLocalStaticRTP
 	rooms     = make(map[string]*Room)
 	roomsLock sync.RWMutex
 
 	log = logging.NewDefaultLoggerFactory().NewLogger("sfu-ws")
 )
 
+// ChatMessage представляет сообщение в чате
+type ChatMessage struct {
+	Sender    string    `json:"sender"`
+	Text      string    `json:"text"`
+	Timestamp time.Time `json:"timestamp"`
+}
+
 type Room struct {
 	Name        string
 	Peers       []peerConnectionState
 	TrackLocals map[string]*webrtc.TrackLocalStaticRTP
+	ChatHistory []ChatMessage // История сообщений чата
 	ListLock    sync.RWMutex
+}
+
+// Добавляем метод для добавления сообщения в историю чата
+func (r *Room) addChatMessage(sender, text string) {
+	r.ListLock.Lock()
+	defer r.ListLock.Unlock()
+
+	message := ChatMessage{
+		Sender:    sender,
+		Text:      text,
+		Timestamp: time.Now(),
+	}
+
+	r.ChatHistory = append(r.ChatHistory, message)
+
+	// Ограничиваем размер истории (например, последние 100 сообщений)
+	if len(r.ChatHistory) > 100 {
+		r.ChatHistory = r.ChatHistory[len(r.ChatHistory)-100:]
+	}
+}
+
+// Добавляем метод для отправки истории чата новому участнику
+func (r *Room) sendChatHistory(ws *threadSafeWriter) error {
+	r.ListLock.RLock()
+	defer r.ListLock.RUnlock()
+
+	if len(r.ChatHistory) == 0 {
+		return nil
+	}
+
+	historyMessage := websocketMessage{
+		Event:  "chat_history",
+		Sender: "system",
+		Data:   "", // Данные будут в отдельном поле
+	}
+
+	// Преобразуем историю в JSON
+	historyJSON, err := json.Marshal(r.ChatHistory)
+	if err != nil {
+		return err
+	}
+
+	// Используем поле Data для истории
+	historyMessage.Data = string(historyJSON)
+
+	return ws.WriteJSON(&historyMessage)
 }
 
 func (r *Room) addTrack(t *webrtc.TrackRemote) *webrtc.TrackLocalStaticRTP {
@@ -170,9 +220,8 @@ func (r *Room) dispatchKeyFrame() {
 // }
 
 type websocketMessage struct {
-	Event string `json:"event"`
-	Data  string `json:"data"`
-	// Добавляем поля для чата
+	Event  string `json:"event"`
+	Data   string `json:"data"`
 	Sender string `json:"sender,omitempty"`
 	Text   string `json:"text,omitempty"`
 }
@@ -180,6 +229,7 @@ type websocketMessage struct {
 type peerConnectionState struct {
 	peerConnection *webrtc.PeerConnection
 	websocket      *threadSafeWriter
+	username       string // Добавляем имя пользователя
 }
 
 func main() {
@@ -193,9 +243,6 @@ func main() {
 			roomsLock.RUnlock()
 		}
 	}()
-
-	// Init other state
-	// trackLocals = map[string]*webrtc.TrackLocalStaticRTP{}
 
 	// Read index.html from disk into memory, serve whenever anyone requests /
 	indexHTML, err := os.ReadFile("index.html")
@@ -222,12 +269,16 @@ func main() {
 }
 
 // Handle incoming websockets
-// Handle incoming websockets
 func websocketHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
 	roomName := r.URL.Query().Get("room")
+	username := r.URL.Query().Get("username") // Получаем имя пользователя из URL
 	if roomName == "" {
 		http.Error(w, "missing room", http.StatusBadRequest)
 		return
+	}
+	if username == "" {
+		username = "anonymous" // Значение по умолчанию
 	}
 
 	roomsLock.Lock()
@@ -236,11 +287,12 @@ func websocketHandler(w http.ResponseWriter, r *http.Request) {
 		room = &Room{
 			Name:        roomName,
 			TrackLocals: make(map[string]*webrtc.TrackLocalStaticRTP),
+			ChatHistory: make([]ChatMessage, 0),
 		}
 		rooms[roomName] = room
 	}
 	roomsLock.Unlock()
-	// Upgrade HTTP request to Websocket
+
 	unsafeConn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		log.Errorf("Failed to upgrade HTTP to Websocket: ", err)
@@ -249,7 +301,11 @@ func websocketHandler(w http.ResponseWriter, r *http.Request) {
 
 	c := &threadSafeWriter{unsafeConn, sync.Mutex{}}
 
-	// Create new PeerConnection
+	// Отправляем историю чата новому участнику
+	if err := room.sendChatHistory(c); err != nil {
+		log.Errorf("Failed to send chat history: %v", err)
+	}
+
 	peerConnection, err := webrtc.NewPeerConnection(webrtc.Configuration{})
 	if err != nil {
 		log.Errorf("Failed to creates a PeerConnection: %v", err)
@@ -257,10 +313,8 @@ func websocketHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// When this frame returns close the PeerConnection
-	defer peerConnection.Close() //nolint
+	defer peerConnection.Close()
 
-	// Принимает одну аудио- и одну видеодорожку входящего сигнала
 	for _, typ := range []webrtc.RTPCodecType{webrtc.RTPCodecTypeVideo, webrtc.RTPCodecTypeAudio} {
 		if _, err := peerConnection.AddTransceiverFromKind(typ, webrtc.RTPTransceiverInit{
 			Direction: webrtc.RTPTransceiverDirectionRecvonly,
@@ -271,9 +325,8 @@ func websocketHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Добавьте наш новый PeerConnection в глобальный список
 	roomsLock.Lock()
-	room.Peers = append(room.Peers, peerConnectionState{peerConnection, c})
+	room.Peers = append(room.Peers, peerConnectionState{peerConnection, c, username})
 	roomsLock.Unlock()
 
 	// Trickle ICE. Передача кандидата сервера клиенту
@@ -365,7 +418,7 @@ func websocketHandler(w http.ResponseWriter, r *http.Request) {
 
 		if err := json.Unmarshal(raw, &message); err != nil {
 			log.Errorf("Failed to unmarshal json to message: %v", err)
-			continue // Продолжаем обработку даже при ошибке unmarshal
+			continue
 		}
 
 		switch message.Event {
@@ -395,7 +448,10 @@ func websocketHandler(w http.ResponseWriter, r *http.Request) {
 				log.Errorf("Failed to set remote description: %v", err)
 				continue
 			}
-		case "chat": // Добавляем обработку сообщений чата
+		case "chat":
+			// Добавляем сообщение в историю комнаты
+			room.addChatMessage(message.Sender, message.Text)
+
 			// Рассылаем сообщение всем участникам комнаты
 			room.ListLock.RLock()
 			for _, peer := range room.Peers {

@@ -2,32 +2,149 @@
 <html>
 <head>
     <meta charset="utf-8">
+    <title>WebRTC SFU with Chat</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+        }
+        #remoteVideos {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        video {
+            background: #000;
+            border: 1px solid #ccc;
+        }
+        #logs {
+            background: #f5f5f5;
+            padding: 10px;
+            border: 1px solid #ddd;
+            height: 100px;
+            overflow-y: auto;
+            margin-bottom: 20px;
+        }
+        #chatContainer {
+            position: fixed;
+            right: 20px;
+            top: 20px;
+            width: 300px;
+            background: white;
+            border: 1px solid #ccc;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            border-radius: 5px;
+        }
+        #chatMessages {
+            height: 200px;
+            overflow-y: auto;
+            padding: 10px;
+            background: #f9f9f9;
+        }
+        .message {
+            margin-bottom: 8px;
+            line-height: 1.4;
+        }
+        .message .sender {
+            font-weight: bold;
+            color: #2c3e50;
+        }
+        .message .timestamp {
+            font-size: 0.8em;
+            color: #7f8c8d;
+            margin-left: 5px;
+        }
+        #chatInputContainer {
+            display: flex;
+            padding: 10px;
+            border-top: 1px solid #eee;
+            background: #fff;
+        }
+        #chatInput {
+            flex-grow: 1;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            outline: none;
+        }
+        #chatInput:focus {
+            border-color: #3498db;
+        }
+        #sendButton {
+            margin-left: 10px;
+            padding: 8px 15px;
+            background: #3498db;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        #sendButton:hover {
+            background: #2980b9;
+        }
+        .join-container {
+            margin-bottom: 20px;
+            padding: 15px;
+            background: #f5f5f5;
+            border-radius: 5px;
+        }
+        .join-container input {
+            padding: 8px;
+            margin-right: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        .join-container button {
+            padding: 8px 15px;
+            background: #2ecc71;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .join-container button:hover {
+            background: #27ae60;
+        }
+    </style>
 </head>
 <body>
-    <h3>Join Room</h3>
-    <input id="roomInput" type="text" placeholder="Enter room name" />
-    <input id="usernameInput" type="text" placeholder="Your name" />
-    <button onclick="joinRoom()">Join</button>
+    <div class="join-container">
+        <h3>Join Room</h3>
+        <input id="roomInput" type="text" placeholder="Enter room name" />
+        <input id="usernameInput" type="text" placeholder="Your name" />
+        <button onclick="joinRoom()">Join</button>
+    </div>
 
-    <h3> Local Video </h3>
-    <video id="localVideo" width="160" height="120" autoplay muted></video> <br />
-
-    <h3> Remote Video </h3>
-    <div id="remoteVideos"></div> <br />
-
-    <h3> Logs </h3>
-    <div id="logs"></div>
+    <div style="display: flex; gap: 20px;">
+        <div style="flex: 1;">
+            <h3>Local Video</h3>
+            <video id="localVideo" width="320" height="240" autoplay muted></video>
+            
+            <h3>Remote Videos</h3>
+            <div id="remoteVideos"></div>
+            
+            <h3>Logs</h3>
+            <div id="logs"></div>
+        </div>
+    </div>
     
-    <div id="chatContainer" style="position: fixed; right: 20px; top: 20px; width: 300px; background: white; border: 1px solid #ccc;">
-        <div id="chatMessages" style="height: 200px; overflow-y: scroll; padding: 10px;"></div>
-        <input id="chatInput" type="text" style="width: 70%; padding: 5px;">
-        <button onclick="sendChatMessage()" style="width: 25%; padding: 5px;">Send</button>
+    <div id="chatContainer">
+        <div id="chatHeader" style="padding: 10px; background: #3498db; color: white; font-weight: bold;">
+            Room Chat
+        </div>
+        <div id="chatMessages"></div>
+        <div id="chatInputContainer">
+            <input id="chatInput" type="text" placeholder="Type your message..." />
+            <button id="sendButton" onclick="sendChatMessage()">Send</button>
+        </div>
     </div>
 
     <script>
         let pc;
         let ws;
         let username = '';
+        let currentRoom = '';
 
         function joinRoom() {
             const room = document.getElementById('roomInput').value.trim();
@@ -38,8 +155,14 @@
                 return;
             }
 
+            currentRoom = room;
+            document.getElementById('chatHeader').textContent = `Room: ${room} (${username})`;
+            
+            // Clear previous chat
+            document.getElementById('chatMessages').innerHTML = '';
+            
             const protocol = location.protocol === "https:" ? "wss" : "ws";
-            const wsURL = `${protocol}://${location.host}/websocket?room=${encodeURIComponent(room)}`;
+            const wsURL = `${protocol}://${location.host}/websocket?room=${encodeURIComponent(room)}&username=${encodeURIComponent(username)}`;
             startConnection(wsURL);
         }
 
@@ -55,6 +178,8 @@
                         el.srcObject = event.streams[0];
                         el.autoplay = true;
                         el.controls = true;
+                        el.style.width = '320px';
+                        el.style.height = '240px';
                         document.getElementById('remoteVideos').appendChild(el);
 
                         event.track.onmute = () => el.play();
@@ -75,58 +200,120 @@
                         }
                     };
 
-                    ws.onclose = () => alert("WebSocket has closed");
-                    ws.onerror = evt => console.log("ERROR:", evt);
+                    ws.onclose = () => {
+                        addLog("WebSocket connection closed");
+                        alert("Disconnected from room");
+                    };
+                    
+                    ws.onerror = evt => {
+                        addLog("WebSocket error: " + JSON.stringify(evt));
+                    };
 
                     ws.onmessage = evt => {
                         const msg = JSON.parse(evt.data);
-                        if (!msg) return console.log('failed to parse msg');
+                        if (!msg) {
+                            addLog("Failed to parse WebSocket message");
+                            return;
+                        }
 
                         switch (msg.event) {
                             case 'offer':
                                 const offer = JSON.parse(msg.data);
-                                pc.setRemoteDescription(offer);
-                                pc.createAnswer().then(answer => {
-                                    pc.setLocalDescription(answer);
-                                    ws.send(JSON.stringify({ event: 'answer', data: JSON.stringify(answer) }));
-                                });
+                                pc.setRemoteDescription(offer)
+                                    .then(() => pc.createAnswer())
+                                    .then(answer => {
+                                        pc.setLocalDescription(answer);
+                                        ws.send(JSON.stringify({ event: 'answer', data: JSON.stringify(answer) }));
+                                        addLog("Sent answer to offer");
+                                    })
+                                    .catch(err => {
+                                        addLog("Error handling offer: " + err);
+                                    });
                                 break;
 
                             case 'candidate':
                                 const candidate = JSON.parse(msg.data);
-                                pc.addIceCandidate(candidate);
+                                pc.addIceCandidate(new RTCIceCandidate(candidate))
+                                    .catch(err => {
+                                        addLog("Error adding ICE candidate: " + err);
+                                    });
                                 break;
 
                             case 'chat':
-                                const chatDiv = document.getElementById('chatMessages');
-                                chatDiv.innerHTML += `<div><strong>${msg.sender}:</strong> ${msg.text}</div>`;
-                                chatDiv.scrollTop = chatDiv.scrollHeight;
+                                addChatMessage(msg.sender, msg.text);
                                 break;
+                                
+                            case 'chat_history':
+                                try {
+                                    const history = JSON.parse(msg.data);
+                                    history.forEach(item => {
+                                        addChatMessage(item.sender, item.text, new Date(item.timestamp));
+                                    });
+                                    addLog(`Loaded ${history.length} chat messages from history`);
+                                } catch (err) {
+                                    addLog("Error parsing chat history: " + err);
+                                }
+                                break;
+                                
+                            default:
+                                addLog("Unknown message type: " + msg.event);
                         }
                     };
+                    
+                    ws.onopen = () => {
+                        addLog("Connected to room: " + currentRoom);
+                    };
                 })
-                .catch(window.alert);
+                .catch(err => {
+                    alert("Error accessing media devices: " + err.message);
+                    addLog("Media error: " + err.message);
+                });
+        }
+
+        function addChatMessage(sender, text, timestamp = new Date()) {
+            const chatDiv = document.getElementById('chatMessages');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = 'message';
+            
+            const timeString = timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            
+            messageDiv.innerHTML = `
+                <span class="sender">${sender}:</span>
+                <span class="timestamp">${timeString}</span>
+                <div>${text}</div>
+            `;
+            
+            chatDiv.appendChild(messageDiv);
+            chatDiv.scrollTop = chatDiv.scrollHeight;
         }
 
         function sendChatMessage() {
-            const message = document.getElementById('chatInput').value;
-            if (message.trim() === '') return;
-            
-            if (!ws || ws.readyState !== WebSocket.OPEN) {
-                alert("WebSocket connection is not open");
-                return;
-            }
-            
-            ws.send(JSON.stringify({
-                event: 'chat',
-                sender: username,
-                text: message
-            }));
-            
-            document.getElementById('chatInput').value = '';
+        const message = document.getElementById('chatInput').value.trim();
+        if (message === '') return;
+        
+        if (!ws || ws.readyState !== WebSocket.OPEN) {
+            alert("Not connected to the room yet");
+            return;
+        }
+        
+        // Убираем локальное добавление сообщения
+        // Оно будет добавлено при получении от сервера
+        ws.send(JSON.stringify({
+            event: 'chat',
+            sender: username,
+            text: message
+        }));
+        
+        document.getElementById('chatInput').value = '';
+    }
+
+        function addLog(message) {
+            const logDiv = document.getElementById('logs');
+            logDiv.innerHTML += `<div>[${new Date().toLocaleTimeString()}] ${message}</div>`;
+            logDiv.scrollTop = logDiv.scrollHeight;
         }
 
-        // Обработка нажатия Enter в поле ввода
+        // Handle Enter key in chat input
         document.getElementById('chatInput').addEventListener('keypress', function(e) {
             if (e.key === 'Enter') {
                 sendChatMessage();
