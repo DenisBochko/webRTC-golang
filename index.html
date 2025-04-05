@@ -1,97 +1,137 @@
 <!DOCTYPE html>
 <html>
-  <head>
+<head>
     <meta charset="utf-8">
-  </head>
-  <body>
+</head>
+<body>
     <h3>Join Room</h3>
     <input id="roomInput" type="text" placeholder="Enter room name" />
+    <input id="usernameInput" type="text" placeholder="Your name" />
     <button onclick="joinRoom()">Join</button>
-  
+
     <h3> Local Video </h3>
     <video id="localVideo" width="160" height="120" autoplay muted></video> <br />
-  
+
     <h3> Remote Video </h3>
     <div id="remoteVideos"></div> <br />
-  
+
     <h3> Logs </h3>
     <div id="logs"></div>
-  </body>
-  
-  <script>
-    let pc;
-    let ws;
-  
-    function joinRoom() {
-      const room = document.getElementById('roomInput').value.trim();
-      if (!room) {
-        alert("Please enter a room name");
-        return;
-      }
+    
+    <div id="chatContainer" style="position: fixed; right: 20px; top: 20px; width: 300px; background: white; border: 1px solid #ccc;">
+        <div id="chatMessages" style="height: 200px; overflow-y: scroll; padding: 10px;"></div>
+        <input id="chatInput" type="text" style="width: 70%; padding: 5px;">
+        <button onclick="sendChatMessage()" style="width: 25%; padding: 5px;">Send</button>
+    </div>
 
-      // Определяем ws или wss в зависимости от протокола
-      const protocol = location.protocol === "https:" ? "wss" : "ws";
-      const wsURL = `${protocol}://${location.host}/websocket?room=${encodeURIComponent(room)}`;
-      startConnection(wsURL);
-    }
-  
-    function startConnection(wsURL) {
-      navigator.mediaDevices.getUserMedia({ video: true, audio: true })
-        .then(stream => {
-          pc = new RTCPeerConnection();
-  
-          pc.ontrack = function (event) {
-            if (event.track.kind === 'audio') return;
-  
-            let el = document.createElement(event.track.kind);
-            el.srcObject = event.streams[0];
-            el.autoplay = true;
-            el.controls = true;
-            document.getElementById('remoteVideos').appendChild(el);
-  
-            event.track.onmute = () => el.play();
-  
-            event.streams[0].onremovetrack = ({ track }) => {
-              if (el.parentNode) el.parentNode.removeChild(el);
-            };
-          };
-  
-          document.getElementById('localVideo').srcObject = stream;
-          stream.getTracks().forEach(track => pc.addTrack(track, stream));
-  
-          ws = new WebSocket(wsURL);
-  
-          pc.onicecandidate = e => {
-            if (e.candidate) {
-              ws.send(JSON.stringify({ event: 'candidate', data: JSON.stringify(e.candidate) }));
+    <script>
+        let pc;
+        let ws;
+        let username = '';
+
+        function joinRoom() {
+            const room = document.getElementById('roomInput').value.trim();
+            username = document.getElementById('usernameInput').value.trim() || 'Anonymous';
+            
+            if (!room) {
+                alert("Please enter a room name");
+                return;
             }
-          };
-  
-          ws.onclose = () => alert("WebSocket has closed");
-          ws.onerror = evt => console.log("ERROR:", evt);
-  
-          ws.onmessage = evt => {
-            const msg = JSON.parse(evt.data);
-            if (!msg) return console.log('failed to parse msg');
-  
-            switch (msg.event) {
-              case 'offer':
-                const offer = JSON.parse(msg.data);
-                pc.setRemoteDescription(offer);
-                pc.createAnswer().then(answer => {
-                  pc.setLocalDescription(answer);
-                  ws.send(JSON.stringify({ event: 'answer', data: JSON.stringify(answer) }));
-                });
-                break;
-  
-              case 'candidate':
-                const candidate = JSON.parse(msg.data);
-                pc.addIceCandidate(candidate);
-                break;
+
+            const protocol = location.protocol === "https:" ? "wss" : "ws";
+            const wsURL = `${protocol}://${location.host}/websocket?room=${encodeURIComponent(room)}`;
+            startConnection(wsURL);
+        }
+
+        function startConnection(wsURL) {
+            navigator.mediaDevices.getUserMedia({ video: true, audio: true })
+                .then(stream => {
+                    pc = new RTCPeerConnection();
+
+                    pc.ontrack = function (event) {
+                        if (event.track.kind === 'audio') return;
+
+                        let el = document.createElement(event.track.kind);
+                        el.srcObject = event.streams[0];
+                        el.autoplay = true;
+                        el.controls = true;
+                        document.getElementById('remoteVideos').appendChild(el);
+
+                        event.track.onmute = () => el.play();
+
+                        event.streams[0].onremovetrack = ({ track }) => {
+                            if (el.parentNode) el.parentNode.removeChild(el);
+                        };
+                    };
+
+                    document.getElementById('localVideo').srcObject = stream;
+                    stream.getTracks().forEach(track => pc.addTrack(track, stream));
+
+                    ws = new WebSocket(wsURL);
+
+                    pc.onicecandidate = e => {
+                        if (e.candidate) {
+                            ws.send(JSON.stringify({ event: 'candidate', data: JSON.stringify(e.candidate) }));
+                        }
+                    };
+
+                    ws.onclose = () => alert("WebSocket has closed");
+                    ws.onerror = evt => console.log("ERROR:", evt);
+
+                    ws.onmessage = evt => {
+                        const msg = JSON.parse(evt.data);
+                        if (!msg) return console.log('failed to parse msg');
+
+                        switch (msg.event) {
+                            case 'offer':
+                                const offer = JSON.parse(msg.data);
+                                pc.setRemoteDescription(offer);
+                                pc.createAnswer().then(answer => {
+                                    pc.setLocalDescription(answer);
+                                    ws.send(JSON.stringify({ event: 'answer', data: JSON.stringify(answer) }));
+                                });
+                                break;
+
+                            case 'candidate':
+                                const candidate = JSON.parse(msg.data);
+                                pc.addIceCandidate(candidate);
+                                break;
+
+                            case 'chat':
+                                const chatDiv = document.getElementById('chatMessages');
+                                chatDiv.innerHTML += `<div><strong>${msg.sender}:</strong> ${msg.text}</div>`;
+                                chatDiv.scrollTop = chatDiv.scrollHeight;
+                                break;
+                        }
+                    };
+                })
+                .catch(window.alert);
+        }
+
+        function sendChatMessage() {
+            const message = document.getElementById('chatInput').value;
+            if (message.trim() === '') return;
+            
+            if (!ws || ws.readyState !== WebSocket.OPEN) {
+                alert("WebSocket connection is not open");
+                return;
             }
-          };
-        })
-        .catch(window.alert);
-    }
-  </script>  
+            
+            ws.send(JSON.stringify({
+                event: 'chat',
+                sender: username,
+                text: message
+            }));
+            
+            document.getElementById('chatInput').value = '';
+        }
+
+        // Обработка нажатия Enter в поле ввода
+        document.getElementById('chatInput').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                sendChatMessage();
+            }
+        });
+    </script>
+</body>
 </html>

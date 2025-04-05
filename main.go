@@ -164,9 +164,17 @@ func (r *Room) dispatchKeyFrame() {
 	}
 }
 
+// type websocketMessage struct {
+// 	Event string `json:"event"`
+// 	Data  string `json:"data"`
+// }
+
 type websocketMessage struct {
 	Event string `json:"event"`
 	Data  string `json:"data"`
+	// Добавляем поля для чата
+	Sender string `json:"sender,omitempty"`
+	Text   string `json:"text,omitempty"`
 }
 
 type peerConnectionState struct {
@@ -207,11 +215,13 @@ func main() {
 	})
 
 	// start HTTP server
+	log.Infof("Server started on: %s", *addr)
 	if err = http.ListenAndServe(*addr, nil); err != nil { //nolint: gosec
 		log.Errorf("Failed to start http server: %v", err)
 	}
 }
 
+// Handle incoming websockets
 // Handle incoming websockets
 func websocketHandler(w http.ResponseWriter, r *http.Request) {
 	roomName := r.URL.Query().Get("room")
@@ -239,13 +249,11 @@ func websocketHandler(w http.ResponseWriter, r *http.Request) {
 
 	c := &threadSafeWriter{unsafeConn, sync.Mutex{}}
 
-	// Когда этот frame вернется, закройте Websocket.
-	defer c.Close() //nolint
-
 	// Create new PeerConnection
 	peerConnection, err := webrtc.NewPeerConnection(webrtc.Configuration{})
 	if err != nil {
 		log.Errorf("Failed to creates a PeerConnection: %v", err)
+		c.Close()
 		return
 	}
 
@@ -258,6 +266,7 @@ func websocketHandler(w http.ResponseWriter, r *http.Request) {
 			Direction: webrtc.RTPTransceiverDirectionRecvonly,
 		}); err != nil {
 			log.Errorf("Failed to add transceiver: %v", err)
+			c.Close()
 			return
 		}
 	}
@@ -346,15 +355,17 @@ func websocketHandler(w http.ResponseWriter, r *http.Request) {
 	for {
 		_, raw, err := c.ReadMessage()
 		if err != nil {
-			log.Errorf("Failed to read message: %v", err)
-			return
+			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
+				log.Errorf("WebSocket read error: %v", err)
+			}
+			break
 		}
 
 		log.Infof("Got message: %s", raw)
 
 		if err := json.Unmarshal(raw, &message); err != nil {
 			log.Errorf("Failed to unmarshal json to message: %v", err)
-			return
+			continue // Продолжаем обработку даже при ошибке unmarshal
 		}
 
 		switch message.Event {
@@ -362,28 +373,37 @@ func websocketHandler(w http.ResponseWriter, r *http.Request) {
 			candidate := webrtc.ICECandidateInit{}
 			if err := json.Unmarshal([]byte(message.Data), &candidate); err != nil {
 				log.Errorf("Failed to unmarshal json to candidate: %v", err)
-				return
+				continue
 			}
 
 			log.Infof("Got candidate: %v", candidate)
 
 			if err := peerConnection.AddICECandidate(candidate); err != nil {
 				log.Errorf("Failed to add ICE candidate: %v", err)
-				return
+				continue
 			}
 		case "answer":
 			answer := webrtc.SessionDescription{}
 			if err := json.Unmarshal([]byte(message.Data), &answer); err != nil {
 				log.Errorf("Failed to unmarshal json to answer: %v", err)
-				return
+				continue
 			}
 
 			log.Infof("Got answer: %v", answer)
 
 			if err := peerConnection.SetRemoteDescription(answer); err != nil {
 				log.Errorf("Failed to set remote description: %v", err)
-				return
+				continue
 			}
+		case "chat": // Добавляем обработку сообщений чата
+			// Рассылаем сообщение всем участникам комнаты
+			room.ListLock.RLock()
+			for _, peer := range room.Peers {
+				if err := peer.websocket.WriteJSON(message); err != nil {
+					log.Errorf("Failed to send chat message: %v", err)
+				}
+			}
+			room.ListLock.RUnlock()
 		default:
 			log.Errorf("unknown message: %+v", message)
 		}
