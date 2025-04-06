@@ -290,13 +290,13 @@ func main() {
 	http.HandleFunc("/", enableCORS(func(w http.ResponseWriter, r *http.Request) {
 		// верифицируем токен пользователя
 		// рабочик токен Token 4b4d65e2c6987c60be6231febe98a064b7167ae4
-		authToken := r.Header.Get("Authorization")
-		validauthToken, _ := verifytoken.ValidateToken(authToken)
-		fmt.Println(authToken)
-		if !validauthToken {
-			http.Error(w, "Invalid token", http.StatusUnauthorized)
-			return
-		}
+		// authToken := r.Header.Get("Authorization")
+		// validauthToken, _ := verifytoken.ValidateToken(authToken)
+		// fmt.Println(authToken)
+		// if !validauthToken {
+		// 	http.Error(w, "Invalid token", http.StatusUnauthorized)
+		// 	return
+		// }
 
 		if err = indexTemplate.Execute(w, "ws://"+r.Host+"/websocket"); err != nil {
 			log.Errorf("Failed to parse index template: %v", err)
@@ -351,7 +351,7 @@ func createRoomHandler(w http.ResponseWriter, r *http.Request) {
 		"status":   "success",
 		"room":     req.Name,
 		"password": req.Password,
-		"uri": fmt.Sprintf("http://localhost:8080/?room=%s&password=%s",
+		"uri": fmt.Sprintf("https://3449009-eq23140.twc1.net/?room=%s&password=%s",
 			req.Name, req.Password),
 	})
 }
@@ -422,16 +422,6 @@ func websocketHandler(w http.ResponseWriter, r *http.Request) {
 	if username == "" {
 		username = "anonymous"
 	}
-
-	// // верифицируем токен пользователя
-	// // рабочик токен Token 4b4d65e2c6987c60be6231febe98a064b7167ae4
-	// authToken := r.Header.Get("Authorization")
-	// validauthToken, _ := verifytoken.ValidateToken(authToken)
-
-	// if !validauthToken {
-	// 	http.Error(w, "Invalid token", http.StatusUnauthorized)
-	// 	return
-	// }
 
 	roomsLock.Lock()
 	room, ok := rooms[roomName]
