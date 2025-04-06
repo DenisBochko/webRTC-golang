@@ -108,20 +108,6 @@
             object-fit: cover;
         }
         
-        .video-info {
-            position: absolute;
-            bottom: 0;
-            left: 0;
-            right: 0;
-            background: rgba(0, 0, 0, 0.6);
-            color: white;
-            padding: 0.5rem 1rem;
-            font-size: 0.9rem;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-        }
-        
         .sidebar {
             width: 350px;
             background: white;
@@ -294,7 +280,6 @@
             <div class="video-grid" id="videoGrid">
                 <div class="video-item">
                     <video id="localVideo" autoplay muted></video>
-                    <div class="video-info" id="localVideoInfo">Вы</div>
                 </div>
             </div>
         </div>
@@ -335,7 +320,7 @@
         let username = '';
         let currentRoom = '';
         let localStream;
-        const userVideos = {}; // Track user videos by username
+        const userVideos = {}; 
 
         // Autofill fields from URL parameters
         window.addEventListener('DOMContentLoaded', () => {
@@ -362,7 +347,6 @@
             }
 
             updateStatus("Connecting to room...");
-            document.getElementById('localVideoInfo').textContent = username;
 
             // First verify the room password
             fetch('/api/check-room', {
@@ -463,12 +447,9 @@
                 pc.ontrack = function (event) {
                     if (event.track.kind === 'audio') return;
 
-                    // Получаем имя пользователя из метаданных трека
                     const streamUsername = event.track.id.split('_')[0] || 'Participant';
                     
-                    // Check if we already have video for this user
                     if (userVideos[streamUsername]) {
-                        // Update existing video
                         userVideos[streamUsername].video.srcObject = event.streams[0];
                         return;
                     }
@@ -480,22 +461,14 @@
                     video.autoplay = true;
                     video.playsInline = true;
                     
-                    const videoInfo = document.createElement('div');
-                    videoInfo.className = 'video-info';
-                    videoInfo.textContent = streamUsername;
-                    
                     videoItem.appendChild(video);
-                    videoItem.appendChild(videoInfo);
-                    
                     document.getElementById('videoGrid').appendChild(videoItem);
                     
                     video.srcObject = event.streams[0];
                     
-                    // Store reference to this user's video
                     userVideos[streamUsername] = {
                         element: videoItem,
-                        video: video,
-                        info: videoInfo
+                        video: video
                     };
 
                     event.track.onmute = () => {
@@ -512,7 +485,6 @@
 
                 document.getElementById('localVideo').srcObject = stream;
                 stream.getTracks().forEach(track => {
-                    // Добавляем имя пользователя в ID трека
                     track.id = `${username}_${track.id}`;
                     pc.addTrack(track, stream);
                 });

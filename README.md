@@ -9,7 +9,7 @@ Authorization: Token 4b4d65e2c6987c60be6231febe98a064b7167ae4
 
 - Создание комнаты
 ```curl
-curl -X POST http://localhost:8080/api/create-room \
+curl -X POST https://3449009-eq23140.twc1.net/api/create-room \
   -H "Content-Type: application/json" \
   -d '{"name":"myroom", "password":"secret123"}'
 
