@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Видеочат заседания</title>
+    <link rel="stylesheet" type="text/css" href="style.css">
+</head>
+<body>
+    <header>
+        <h1>Видеочат заседания</h1>
+        <button class="leave-btn" id="leaveBtn" onclick="leaveRoom()">Покинуть заседание</button>
+    </header>
+    
+    <div class="main-container">
+        <div class="video-container">
+            <div class="video-grid" id="videoGrid">
+                <div class="video-item">
+                    <video id="localVideo" autoplay muted></video>
+                </div>
+            </div>
+        </div>
+        
+        <div class="sidebar">
+            <div class="join-form" id="joinForm">
+                <div class="form-group">
+                    <label for="roomName">Имя заседания</label>
+                    <input id="roomName" type="text" placeholder="Введите имя заседания">
+                </div>
+                <div class="form-group">
+                    <label for="roomPassword">Пароль</label>
+                    <input id="roomPassword" type="password" placeholder="Введите ваш пароль">
+                </div>
+                <div class="form-group">
+                    <label for="username">Ваше имя</label>
+                    <input id="username" type="text" placeholder="Введите ваше имя">
+                </div>
+                <button class="btn" onclick="joinRoom()">Присоединиться к заседанию</button>
+            </div>
+            
+            <div class="chat-container">
+                <div class="chat-header" id="chatHeader">Чат</div>
+                <div class="chat-messages" id="chatMessages"></div>
+                <div class="chat-input-container">
+                    <input type="text" class="chat-input" id="chatInput" placeholder="Введите сообщение...">
+                    <button class="send-btn" onclick="sendChatMessage()">Отправить сообщение</button>
+                </div>
+            </div>
+            
+            <div class="status-bar" id="statusBar">Отключен</div>
+        </div>
+    </div>
+<script src="script.js"></script>
+</body>
+</html>

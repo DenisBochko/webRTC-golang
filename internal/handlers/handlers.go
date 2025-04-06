@@ -1,13 +1,11 @@
-package main
+package handlers
 
 import (
 	"encoding/json"
 	"flag"
 	"fmt"
 	"net/http"
-	"os"
 	"sync"
-	"text/template"
 	"time"
 
 	// verifytoken "webrtc-app/test-verify-token"
@@ -21,21 +19,20 @@ import (
 
 // nolint
 var (
-	addr     = flag.String("addr", ":8080", "http service address")
+	Addr     = flag.String("addr", ":8080", "http service address")
 	upgrader = websocket.Upgrader{
 		CheckOrigin: func(r *http.Request) bool { return true },
 	}
-	indexTemplate = &template.Template{}
 
-	rooms         = make(map[string]*Room)
+	Rooms         = make(map[string]*Room)
 	roomPasswords = make(map[string]string) // Хранилище паролей комнат
-	roomsLock     sync.RWMutex
+	RoomsLock     sync.RWMutex
 
 	log = logging.NewDefaultLoggerFactory().NewLogger("sfu-ws")
 )
 
 // enableCORS добавляет CORS заголовки к ответу
-func enableCORS(next http.HandlerFunc) http.HandlerFunc {
+func EnableCORS(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		w.Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS, PUT, DELETE")
@@ -152,7 +149,7 @@ func (r *Room) signalPeerConnections() {
 	r.ListLock.Lock()
 	defer func() {
 		r.ListLock.Unlock()
-		r.dispatchKeyFrame()
+		r.DispatchKeyFrame()
 	}()
 
 	attemptSync := func() bool {
@@ -232,7 +229,7 @@ func (r *Room) signalPeerConnections() {
 	}
 }
 
-func (r *Room) dispatchKeyFrame() {
+func (r *Room) DispatchKeyFrame() {
 	r.ListLock.Lock()
 	defer r.ListLock.Unlock()
 	for i := range r.Peers {
@@ -247,11 +244,6 @@ func (r *Room) dispatchKeyFrame() {
 	}
 }
 
-// type websocketMessage struct {
-// 	Event string `json:"event"`
-// 	Data  string `json:"data"`
-// }
-
 type websocketMessage struct {
 	Event  string `json:"event"`
 	Data   string `json:"data"`
@@ -265,53 +257,8 @@ type peerConnectionState struct {
 	username       string // Добавляем имя пользователя
 }
 
-func main() {
-	flag.Parse()
-	go func() {
-		for range time.NewTicker(time.Second * 3).C {
-			roomsLock.RLock()
-			for _, room := range rooms {
-				room.dispatchKeyFrame()
-			}
-			roomsLock.RUnlock()
-		}
-	}()
-
-	// Read index.html from disk into memory
-	indexHTML, err := os.ReadFile("static/index.html")
-	if err != nil {
-		panic(err)
-	}
-	indexTemplate = template.Must(template.New("").Parse(string(indexHTML)))
-
-	// API endpoints с CORS
-	http.HandleFunc("/api/create-room", enableCORS(createRoomHandler))
-	http.HandleFunc("/api/check-room", enableCORS(checkRoomHandler))
-	http.HandleFunc("/websocket", enableCORS(websocketHandler))
-	http.HandleFunc("/", enableCORS(func(w http.ResponseWriter, r *http.Request) {
-		// верифицируем токен пользователя
-		// рабочик токен Token 4b4d65e2c6987c60be6231febe98a064b7167ae4
-		// authToken := r.Header.Get("Authorization")
-		// validauthToken, _ := verifytoken.ValidateToken(authToken)
-		// fmt.Println(authToken)
-		// if !validauthToken {
-		// 	http.Error(w, "Invalid token", http.StatusUnauthorized)
-		// 	return
-		// }
-
-		if err = indexTemplate.Execute(w, "ws://"+r.Host+"/websocket"); err != nil {
-			log.Errorf("Failed to parse index template: %v", err)
-		}
-	}))
-
-	log.Infof("Server started on: %s", *addr)
-	if err = http.ListenAndServe(*addr, nil); err != nil {
-		log.Errorf("Failed to start http server: %v", err)
-	}
-}
-
 // Обработчик создания комнаты
-func createRoomHandler(w http.ResponseWriter, r *http.Request) {
+func CreateRoomHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -328,10 +275,10 @@ func createRoomHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	roomsLock.Lock()
-	defer roomsLock.Unlock()
+	RoomsLock.Lock()
+	defer RoomsLock.Unlock()
 
-	if _, exists := rooms[req.Name]; exists {
+	if _, exists := Rooms[req.Name]; exists {
 		http.Error(w, "Room already exists", http.StatusConflict)
 		return
 	}
@@ -342,7 +289,7 @@ func createRoomHandler(w http.ResponseWriter, r *http.Request) {
 		TrackLocals: make(map[string]*webrtc.TrackLocalStaticRTP),
 		ChatHistory: make([]ChatMessage, 0),
 	}
-	rooms[req.Name] = room
+	Rooms[req.Name] = room
 	roomPasswords[req.Name] = req.Password
 
 	w.Header().Set("Content-Type", "application/json")
@@ -358,7 +305,7 @@ func createRoomHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 // Обработчик проверки комнаты
-func checkRoomHandler(w http.ResponseWriter, r *http.Request) {
+func CheckRoomHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -370,8 +317,8 @@ func checkRoomHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	roomsLock.RLock()
-	defer roomsLock.RUnlock()
+	RoomsLock.RLock()
+	defer RoomsLock.RUnlock()
 
 	password, exists := roomPasswords[req.Name]
 	if !exists {
@@ -391,9 +338,8 @@ func checkRoomHandler(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// Handle incoming websockets
-// Модифицированный websocketHandler с проверкой пароля
-func websocketHandler(w http.ResponseWriter, r *http.Request) {
+// websocketHandler с проверкой пароля
+func WebsocketHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 
 	roomName := r.URL.Query().Get("room")
@@ -406,9 +352,9 @@ func websocketHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Проверяем пароль комнаты
-	roomsLock.RLock()
+	RoomsLock.RLock()
 	roomPassword, roomExists := roomPasswords[roomName]
-	roomsLock.RUnlock()
+	RoomsLock.RUnlock()
 
 	if !roomExists {
 		http.Error(w, "Room does not exist", http.StatusNotFound)
@@ -424,15 +370,15 @@ func websocketHandler(w http.ResponseWriter, r *http.Request) {
 		username = "anonymous"
 	}
 
-	roomsLock.Lock()
-	room, ok := rooms[roomName]
+	RoomsLock.Lock()
+	room, ok := Rooms[roomName]
 	if !ok {
 		// Это не должно происходить, так как мы уже проверили roomPasswords
 		http.Error(w, "Room configuration error", http.StatusInternalServerError)
-		roomsLock.Unlock()
+		RoomsLock.Unlock()
 		return
 	}
-	roomsLock.Unlock()
+	RoomsLock.Unlock()
 
 	unsafeConn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
@@ -466,9 +412,9 @@ func websocketHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	roomsLock.Lock()
+	RoomsLock.Lock()
 	room.Peers = append(room.Peers, peerConnectionState{peerConnection, c, username})
-	roomsLock.Unlock()
+	RoomsLock.Unlock()
 
 	// Trickle ICE. Передача кандидата сервера клиенту
 	peerConnection.OnICECandidate(func(i *webrtc.ICECandidate) {
