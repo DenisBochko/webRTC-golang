@@ -5,9 +5,9 @@
     <title>Видеочат заседания</title>
     <style>
         :root {
-            --primary-color: #0ca31e;
-            --secondary-color: #166088;
-            --accent-color: #00608c;
+            --primary-color: rgb(19, 164, 56);
+            --secondary-color: rgb(49, 39, 130);
+            --accent-color: rgb(49, 39, 130);
             --background-color: #f8f9fa;
             --text-color: #333;
             --light-text: #f8f9fa;
@@ -39,11 +39,30 @@
             padding: 1rem 2rem;
             box-shadow: var(--box-shadow);
             z-index: 10;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
         }
         
         header h1 {
             font-size: 1.8rem;
             font-weight: 500;
+        }
+        
+        .leave-btn {
+            padding: 0.5rem 1rem;
+            background-color: #e74c3c;
+            color: white;
+            border: none;
+            border-radius: var(--border-radius);
+            font-size: 0.9rem;
+            cursor: pointer;
+            transition: background-color 0.3s;
+            display: none;
+        }
+        
+        .leave-btn:hover {
+            background-color: #c0392b;
         }
         
         .main-container {
@@ -98,6 +117,9 @@
             color: white;
             padding: 0.5rem 1rem;
             font-size: 0.9rem;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
         }
         
         .sidebar {
@@ -264,6 +286,7 @@
 <body>
     <header>
         <h1>Видеочат заседания</h1>
+        <button class="leave-btn" id="leaveBtn" onclick="leaveRoom()">Покинуть заседание</button>
     </header>
     
     <div class="main-container">
@@ -271,38 +294,38 @@
             <div class="video-grid" id="videoGrid">
                 <div class="video-item">
                     <video id="localVideo" autoplay muted></video>
-                    <div class="video-info">You</div>
+                    <div class="video-info" id="localVideoInfo">Вы</div>
                 </div>
             </div>
         </div>
         
         <div class="sidebar">
-            <div class="join-form">
+            <div class="join-form" id="joinForm">
                 <div class="form-group">
-                    <label for="roomName">Room Name</label>
-                    <input id="roomName" type="text" placeholder="Enter room name">
+                    <label for="roomName">Имя заседания</label>
+                    <input id="roomName" type="text" placeholder="Введите имя заседания">
                 </div>
                 <div class="form-group">
-                    <label for="roomPassword">Password</label>
-                    <input id="roomPassword" type="password" placeholder="Enter room password">
+                    <label for="roomPassword">Пароль</label>
+                    <input id="roomPassword" type="password" placeholder="Введите ваш пароль">
                 </div>
                 <div class="form-group">
-                    <label for="username">Your Name</label>
-                    <input id="username" type="text" placeholder="Enter your name">
+                    <label for="username">Ваше имя</label>
+                    <input id="username" type="text" placeholder="Введите ваше имя">
                 </div>
-                <button class="btn" onclick="joinRoom()">Join Room</button>
+                <button class="btn" onclick="joinRoom()">Присоединиться к заседанию</button>
             </div>
             
             <div class="chat-container">
-                <div class="chat-header" id="chatHeader">Chat</div>
+                <div class="chat-header" id="chatHeader">Чат</div>
                 <div class="chat-messages" id="chatMessages"></div>
                 <div class="chat-input-container">
-                    <input type="text" class="chat-input" id="chatInput" placeholder="Type your message...">
-                    <button class="send-btn" onclick="sendChatMessage()">Send</button>
+                    <input type="text" class="chat-input" id="chatInput" placeholder="Введите сообщение...">
+                    <button class="send-btn" onclick="sendChatMessage()">Отправить сообщение</button>
                 </div>
             </div>
             
-            <div class="status-bar" id="statusBar">Disconnected</div>
+            <div class="status-bar" id="statusBar">Отключен</div>
         </div>
     </div>
 
@@ -312,6 +335,7 @@
         let username = '';
         let currentRoom = '';
         let localStream;
+        const userVideos = {}; // Track user videos by username
 
         // Autofill fields from URL parameters
         window.addEventListener('DOMContentLoaded', () => {
@@ -338,6 +362,7 @@
             }
 
             updateStatus("Connecting to room...");
+            document.getElementById('localVideoInfo').textContent = username;
 
             // First verify the room password
             fetch('/api/check-room', {
@@ -360,8 +385,12 @@
             .then(data => {
                 if (data.status === 'success') {
                     currentRoom = roomName;
-                    document.getElementById('chatHeader').textContent = `Chat: ${roomName}`;
+                    document.getElementById('chatHeader').textContent = `Чат: ${roomName}`;
                     document.getElementById('chatMessages').innerHTML = '';
+                    
+                    // Hide join form and show leave button
+                    document.getElementById('joinForm').style.display = 'none';
+                    document.getElementById('leaveBtn').style.display = 'block';
                     
                     connectToRoom(roomName, password, username);
                 }
@@ -371,6 +400,35 @@
                 updateStatus("Failed to join room");
                 alert(error.error || "Failed to join room");
             });
+        }
+
+        function leaveRoom() {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.close();
+            }
+            
+            if (pc) {
+                pc.close();
+            }
+            
+            if (localStream) {
+                localStream.getTracks().forEach(track => track.stop());
+            }
+            
+            // Clear all remote videos
+            const videoGrid = document.getElementById('videoGrid');
+            while (videoGrid.children.length > 1) {
+                videoGrid.removeChild(videoGrid.lastChild);
+            }
+            
+            // Reset UI
+            document.getElementById('joinForm').style.display = 'block';
+            document.getElementById('leaveBtn').style.display = 'none';
+            document.getElementById('localVideo').srcObject = null;
+            updateStatus("Disconnected");
+            currentRoom = '';
+            username = '';
+            userVideos = {};
         }
 
         function connectToRoom(roomName, password, username) {
@@ -405,6 +463,16 @@
                 pc.ontrack = function (event) {
                     if (event.track.kind === 'audio') return;
 
+                    // Получаем имя пользователя из метаданных трека
+                    const streamUsername = event.track.id.split('_')[0] || 'Participant';
+                    
+                    // Check if we already have video for this user
+                    if (userVideos[streamUsername]) {
+                        // Update existing video
+                        userVideos[streamUsername].video.srcObject = event.streams[0];
+                        return;
+                    }
+
                     const videoItem = document.createElement('div');
                     videoItem.className = 'video-item';
                     
@@ -414,7 +482,7 @@
                     
                     const videoInfo = document.createElement('div');
                     videoInfo.className = 'video-info';
-                    videoInfo.textContent = event.streams[0].id;
+                    videoInfo.textContent = streamUsername;
                     
                     videoItem.appendChild(video);
                     videoItem.appendChild(videoInfo);
@@ -422,6 +490,13 @@
                     document.getElementById('videoGrid').appendChild(videoItem);
                     
                     video.srcObject = event.streams[0];
+                    
+                    // Store reference to this user's video
+                    userVideos[streamUsername] = {
+                        element: videoItem,
+                        video: video,
+                        info: videoInfo
+                    };
 
                     event.track.onmute = () => {
                         video.play();
@@ -430,12 +505,17 @@
                     event.streams[0].onremovetrack = ({ track }) => {
                         if (videoItem.parentNode) {
                             videoItem.parentNode.removeChild(videoItem);
+                            delete userVideos[streamUsername];
                         }
                     };
                 };
 
                 document.getElementById('localVideo').srcObject = stream;
-                stream.getTracks().forEach(track => pc.addTrack(track, stream));
+                stream.getTracks().forEach(track => {
+                    // Добавляем имя пользователя в ID трека
+                    track.id = `${username}_${track.id}`;
+                    pc.addTrack(track, stream);
+                });
 
                 ws = new WebSocket(wsURL);
 
@@ -447,7 +527,6 @@
 
                 ws.onclose = () => {
                     updateStatus("Disconnected from room");
-                    alert("Disconnected from room");
                 };
                 
                 ws.onerror = evt => {
@@ -470,7 +549,7 @@
                                 .then(answer => {
                                     pc.setLocalDescription(answer);
                                     ws.send(JSON.stringify({ event: 'answer', data: JSON.stringify(answer) }));
-                                    updateStatus("Connected to room: " + currentRoom);
+                                    updateStatus("Подключено к заседанию: " + currentRoom);
                                 })
                                 .catch(err => {
                                     console.error("Error handling offer:", err);
