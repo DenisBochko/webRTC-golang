@@ -9,7 +9,8 @@ import (
 	"sync"
 	"text/template"
 	"time"
-	verifytoken "webrtc-app/test-verify-token"
+
+	// verifytoken "webrtc-app/test-verify-token"
 
 	"github.com/gorilla/websocket"
 	"github.com/pion/logging"
@@ -351,8 +352,8 @@ func createRoomHandler(w http.ResponseWriter, r *http.Request) {
 		"status":   "success",
 		"room":     req.Name,
 		"password": req.Password,
-		"uri": fmt.Sprintf("https://3449009-eq23140.twc1.net/?room=%s&password=%s",
-			req.Name, req.Password),
+		"uri": fmt.Sprintf("https://3449009-eq23140.twc1.net/?room=%s",
+			req.Name),
 	})
 }
 

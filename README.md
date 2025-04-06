@@ -17,7 +17,7 @@ curl -X POST http://localhost:8080/api/create-room \
     "password": "secret123",
     "room": "myroom",
     "status": "success",
-    "uri": "https://3449009-eq23140.twc1.net/?room=myroom&password=secret123"
+    "uri": "https://3449009-eq23140.twc1.net/?room=myroom"
 }
 ```
 

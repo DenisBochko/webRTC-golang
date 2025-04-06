@@ -2,205 +2,307 @@
 <html>
 <head>
     <meta charset="utf-8">
-    <title>WebRTC SFU with Secure Rooms</title>
+    <title>Видеочат заседания</title>
     <style>
+        :root {
+            --primary-color: #0ca31e;
+            --secondary-color: #166088;
+            --accent-color: #00608c;
+            --background-color: #f8f9fa;
+            --text-color: #333;
+            --light-text: #f8f9fa;
+            --border-radius: 8px;
+            --box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+        
         body {
-            font-family: Arial, sans-serif;
-            margin: 20px;
-        }
-        .container {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--background-color);
+            color: var(--text-color);
+            line-height: 1.6;
+            padding: 0;
+            margin: 0;
+            height: 100vh;
             display: flex;
-            gap: 20px;
+            flex-direction: column;
         }
-        .video-section {
-            flex: 1;
-        }
-        #remoteVideos {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 10px;
-            margin-bottom: 20px;
-        }
-        video {
-            background: #000;
-            border: 1px solid #ccc;
-            width: 320px;
-            height: 240px;
-        }
-        #logs {
-            background: #f5f5f5;
-            padding: 10px;
-            border: 1px solid #ddd;
-            height: 100px;
-            overflow-y: auto;
-            margin-bottom: 20px;
-        }
-        #chatContainer {
-            width: 300px;
-            background: white;
-            border: 1px solid #ccc;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-            border-radius: 5px;
-        }
-        #chatMessages {
-            height: 200px;
-            overflow-y: auto;
-            padding: 10px;
-            background: #f9f9f9;
-        }
-        .message {
-            margin-bottom: 8px;
-            line-height: 1.4;
-        }
-        .message .sender {
-            font-weight: bold;
-            color: #2c3e50;
-        }
-        .message .timestamp {
-            font-size: 0.8em;
-            color: #7f8c8d;
-            margin-left: 5px;
-        }
-        #chatInputContainer {
-            display: flex;
-            padding: 10px;
-            border-top: 1px solid #eee;
-            background: #fff;
-        }
-        #chatInput {
-            flex-grow: 1;
-            padding: 8px;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-            outline: none;
-        }
-        #chatInput:focus {
-            border-color: #3498db;
-        }
-        .btn {
-            padding: 8px 15px;
+        
+        header {
+            background-color: var(--primary-color);
             color: white;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
+            padding: 1rem 2rem;
+            box-shadow: var(--box-shadow);
+            z-index: 10;
         }
-        .btn-primary {
-            background: #3498db;
+        
+        header h1 {
+            font-size: 1.8rem;
+            font-weight: 500;
         }
-        .btn-primary:hover {
-            background: #2980b9;
+        
+        .main-container {
+            display: flex;
+            flex: 1;
+            overflow: hidden;
         }
-        .btn-success {
-            background: #2ecc71;
+        
+        .video-container {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            padding: 1rem;
+            overflow: hidden;
         }
-        .btn-success:hover {
-            background: #27ae60;
+        
+        .video-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(400px, 1fr));
+            grid-auto-rows: minmax(300px, 1fr);
+            gap: 1rem;
+            flex: 1;
+            overflow-y: auto;
+            padding: 1rem;
         }
+        
+        .video-item {
+            position: relative;
+            background: #000;
+            border-radius: var(--border-radius);
+            overflow: hidden;
+            box-shadow: var(--box-shadow);
+            transition: transform 0.2s;
+        }
+        
+        .video-item:hover {
+            transform: translateY(-5px);
+        }
+        
+        .video-item video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+        
+        .video-info {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: rgba(0, 0, 0, 0.6);
+            color: white;
+            padding: 0.5rem 1rem;
+            font-size: 0.9rem;
+        }
+        
+        .sidebar {
+            width: 350px;
+            background: white;
+            border-left: 1px solid #e0e0e0;
+            display: flex;
+            flex-direction: column;
+            box-shadow: -2px 0 5px rgba(0, 0, 0, 0.05);
+        }
+        
+        .join-form {
+            padding: 1.5rem;
+            border-bottom: 1px solid #e0e0e0;
+        }
+        
         .form-group {
-            margin-bottom: 15px;
+            margin-bottom: 1rem;
         }
+        
         .form-group label {
             display: block;
-            margin-bottom: 5px;
-            font-weight: bold;
+            margin-bottom: 0.5rem;
+            font-weight: 500;
+            color: var(--secondary-color);
         }
+        
         .form-group input {
             width: 100%;
-            padding: 8px;
+            padding: 0.75rem;
             border: 1px solid #ddd;
-            border-radius: 4px;
+            border-radius: var(--border-radius);
+            font-size: 1rem;
+            transition: border 0.3s;
         }
-        .tab-container {
-            margin-bottom: 20px;
+        
+        .form-group input:focus {
+            outline: none;
+            border-color: var(--accent-color);
         }
-        .tab-buttons {
-            display: flex;
-            margin-bottom: 10px;
-        }
-        .tab-btn {
-            padding: 10px 20px;
-            background: #eee;
-            border: none;
-            cursor: pointer;
-        }
-        .tab-btn.active {
-            background: #3498db;
+        
+        .btn {
+            display: inline-block;
+            padding: 0.75rem 1.5rem;
+            background-color: var(--primary-color);
             color: white;
+            border: none;
+            border-radius: var(--border-radius);
+            font-size: 1rem;
+            cursor: pointer;
+            transition: background-color 0.3s;
+            width: 100%;
+            font-weight: 500;
         }
-        .tab-content {
-            display: none;
-            padding: 15px;
+        
+        .btn:hover {
+            background-color: var(--secondary-color);
+        }
+        
+        .chat-container {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        
+        .chat-header {
+            padding: 1rem;
+            background-color: var(--primary-color);
+            color: white;
+            font-weight: 500;
+            text-align: center;
+        }
+        
+        .chat-messages {
+            flex: 1;
+            overflow-y: auto;
+            padding: 1rem;
             background: #f5f5f5;
-            border-radius: 5px;
         }
-        .tab-content.active {
-            display: block;
+        
+        .message {
+            margin-bottom: 1rem;
+            padding: 0.75rem;
+            background: white;
+            border-radius: var(--border-radius);
+            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+        }
+        
+        .message-header {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 0.5rem;
+            font-size: 0.85rem;
+        }
+        
+        .message-sender {
+            font-weight: 600;
+            color: var(--secondary-color);
+        }
+        
+        .message-time {
+            color: #777;
+        }
+        
+        .chat-input-container {
+            display: flex;
+            padding: 1rem;
+            border-top: 1px solid #e0e0e0;
+            background: white;
+        }
+        
+        .chat-input {
+            flex: 1;
+            padding: 0.75rem;
+            border: 1px solid #ddd;
+            border-radius: var(--border-radius) 0 0 var(--border-radius);
+            font-size: 1rem;
+            outline: none;
+        }
+        
+        .chat-input:focus {
+            border-color: var(--accent-color);
+        }
+        
+        .send-btn {
+            padding: 0 1.5rem;
+            background-color: var(--primary-color);
+            color: white;
+            border: none;
+            border-radius: 0 var(--border-radius) var(--border-radius) 0;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        
+        .send-btn:hover {
+            background-color: var(--secondary-color);
+        }
+        
+        .status-bar {
+            padding: 0.75rem 1rem;
+            background-color: #f0f0f0;
+            border-top: 1px solid #e0e0e0;
+            font-size: 0.85rem;
+            color: #666;
+        }
+        
+        @media (max-width: 768px) {
+            .main-container {
+                flex-direction: column;
+            }
+            
+            .sidebar {
+                width: 100%;
+                height: 300px;
+            }
+            
+            .video-grid {
+                grid-template-columns: 1fr;
+            }
         }
     </style>
 </head>
 <body>
-    <h1>WebRTC Video Chat</h1>
+    <header>
+        <h1>Видеочат заседания</h1>
+    </header>
     
-    <div class="tab-container">
-        <div class="tab-buttons">
-            <button class="tab-btn active" onclick="openTab('joinTab')">Join Room</button>
-            <button class="tab-btn" onclick="openTab('createTab')">Create Room</button>
+    <div class="main-container">
+        <div class="video-container">
+            <div class="video-grid" id="videoGrid">
+                <div class="video-item">
+                    <video id="localVideo" autoplay muted></video>
+                    <div class="video-info">You</div>
+                </div>
+            </div>
         </div>
         
-        <div id="joinTab" class="tab-content active">
-            <div class="form-group">
-                <label for="joinRoomName">Room Name</label>
-                <input id="joinRoomName" type="text" placeholder="Enter room name">
+        <div class="sidebar">
+            <div class="join-form">
+                <div class="form-group">
+                    <label for="roomName">Room Name</label>
+                    <input id="roomName" type="text" placeholder="Enter room name">
+                </div>
+                <div class="form-group">
+                    <label for="roomPassword">Password</label>
+                    <input id="roomPassword" type="password" placeholder="Enter room password">
+                </div>
+                <div class="form-group">
+                    <label for="username">Your Name</label>
+                    <input id="username" type="text" placeholder="Enter your name">
+                </div>
+                <button class="btn" onclick="joinRoom()">Join Room</button>
             </div>
-            <div class="form-group">
-                <label for="joinRoomPassword">Password</label>
-                <input id="joinRoomPassword" type="password" placeholder="Enter room password">
-            </div>
-            <div class="form-group">
-                <label for="joinUsername">Your Name</label>
-                <input id="joinUsername" type="text" placeholder="Enter your name">
-            </div>
-            <button class="btn btn-success" onclick="joinRoom()">Join Room</button>
-        </div>
-        
-        <div id="createTab" class="tab-content">
-            <div class="form-group">
-                <label for="createRoomName">Room Name</label>
-                <input id="createRoomName" type="text" placeholder="Enter room name">
-            </div>
-            <div class="form-group">
-                <label for="createRoomPassword">Password</label>
-                <input id="createRoomPassword" type="password" placeholder="Create room password">
-            </div>
-            <div class="form-group">
-                <label for="createUsername">Your Name</label>
-                <input id="createUsername" type="text" placeholder="Enter your name">
-            </div>
-            <button class="btn btn-success" onclick="createRoom()">Create Room</button>
-        </div>
-    </div>
-
-    <div class="container">
-        <div class="video-section">
-            <h3>Local Video</h3>
-            <video id="localVideo" autoplay muted></video>
             
-            <h3>Remote Videos</h3>
-            <div id="remoteVideos"></div>
+            <div class="chat-container">
+                <div class="chat-header" id="chatHeader">Chat</div>
+                <div class="chat-messages" id="chatMessages"></div>
+                <div class="chat-input-container">
+                    <input type="text" class="chat-input" id="chatInput" placeholder="Type your message...">
+                    <button class="send-btn" onclick="sendChatMessage()">Send</button>
+                </div>
+            </div>
             
-            <h3>Logs</h3>
-            <div id="logs"></div>
-        </div>
-        
-        <div id="chatContainer">
-            <div id="chatHeader" style="padding: 10px; background: #3498db; color: white; font-weight: bold;">
-                Room Chat
-            </div>
-            <div id="chatMessages"></div>
-            <div id="chatInputContainer">
-                <input id="chatInput" type="text" placeholder="Type your message..." />
-                <button class="btn btn-primary" id="sendButton" onclick="sendChatMessage()">Send</button>
-            </div>
+            <div class="status-bar" id="statusBar">Disconnected</div>
         </div>
     </div>
 
@@ -209,71 +311,33 @@
         let ws;
         let username = '';
         let currentRoom = '';
+        let localStream;
 
-        function openTab(tabId) {
-            // Hide all tab contents
-            document.querySelectorAll('.tab-content').forEach(tab => {
-                tab.classList.remove('active');
-            });
-            
-            // Deactivate all tab buttons
-            document.querySelectorAll('.tab-btn').forEach(btn => {
-                btn.classList.remove('active');
-            });
-            
-            // Activate selected tab
-            document.getElementById(tabId).classList.add('active');
-            event.currentTarget.classList.add('active');
-        }
+        // Autofill fields from URL parameters
+        window.addEventListener('DOMContentLoaded', () => {
+            const urlParams = new URLSearchParams(window.location.search);
+            const room = urlParams.get('room');
+            const password = urlParams.get('password');
 
-        function createRoom() {
-            const roomName = document.getElementById('createRoomName').value.trim();
-            const password = document.getElementById('createRoomPassword').value.trim();
-            username = document.getElementById('createUsername').value.trim() || 'Anonymous';
-            
-            if (!roomName || !password) {
-                alert("Please enter room name and password");
-                return;
+            if (room) {
+                document.getElementById('roomName').value = room;
             }
-
-            fetch('/api/create-room', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    name: roomName,
-                    password: password
-                })
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.status === 'success') {
-                    currentRoom = roomName;
-                    document.getElementById('chatHeader').textContent = `Room: ${roomName} (${username})`;
-                    document.getElementById('chatMessages').innerHTML = '';
-                    
-                    // Automatically join the room after creation
-                    connectToRoom(roomName, password, username);
-                } else {
-                    alert("Failed to create room: " + (data.error || 'Unknown error'));
-                }
-            })
-            .catch(error => {
-                console.error('Error:', error);
-                alert("Failed to create room");
-            });
-        }
+            if (password) {
+                document.getElementById('roomPassword').value = password;
+            }
+        });
 
         function joinRoom() {
-            const roomName = document.getElementById('joinRoomName').value.trim();
-            const password = document.getElementById('joinRoomPassword').value.trim();
-            username = document.getElementById('joinUsername').value.trim() || 'Anonymous';
+            const roomName = document.getElementById('roomName').value.trim();
+            const password = document.getElementById('roomPassword').value.trim();
+            username = document.getElementById('username').value.trim() || 'Guest';
             
             if (!roomName || !password) {
                 alert("Please enter room name and password");
                 return;
             }
+
+            updateStatus("Connecting to room...");
 
             // First verify the room password
             fetch('/api/check-room', {
@@ -296,7 +360,7 @@
             .then(data => {
                 if (data.status === 'success') {
                     currentRoom = roomName;
-                    document.getElementById('chatHeader').textContent = `Room: ${roomName} (${username})`;
+                    document.getElementById('chatHeader').textContent = `Chat: ${roomName}`;
                     document.getElementById('chatMessages').innerHTML = '';
                     
                     connectToRoom(roomName, password, username);
@@ -304,6 +368,7 @@
             })
             .catch(error => {
                 console.error('Error:', error);
+                updateStatus("Failed to join room");
                 alert(error.error || "Failed to join room");
             });
         }
@@ -316,105 +381,140 @@
         }
 
         function startConnection(wsURL) {
-            navigator.mediaDevices.getUserMedia({ video: true, audio: true })
-                .then(stream => {
-                    pc = new RTCPeerConnection();
-
-                    pc.ontrack = function (event) {
-                        if (event.track.kind === 'audio') return;
-
-                        let el = document.createElement(event.track.kind);
-                        el.srcObject = event.streams[0];
-                        el.autoplay = true;
-                        el.controls = true;
-                        document.getElementById('remoteVideos').appendChild(el);
-
-                        event.track.onmute = () => el.play();
-
-                        event.streams[0].onremovetrack = ({ track }) => {
-                            if (el.parentNode) el.parentNode.removeChild(el);
-                        };
-                    };
-
-                    document.getElementById('localVideo').srcObject = stream;
-                    stream.getTracks().forEach(track => pc.addTrack(track, stream));
-
-                    ws = new WebSocket(wsURL);
-
-                    pc.onicecandidate = e => {
-                        if (e.candidate) {
-                            ws.send(JSON.stringify({ event: 'candidate', data: JSON.stringify(e.candidate) }));
-                        }
-                    };
-
-                    ws.onclose = () => {
-                        addLog("WebSocket connection closed");
-                        alert("Disconnected from room");
-                    };
-                    
-                    ws.onerror = evt => {
-                        addLog("WebSocket error: " + JSON.stringify(evt));
-                    };
-
-                    ws.onmessage = evt => {
-                        const msg = JSON.parse(evt.data);
-                        if (!msg) {
-                            addLog("Failed to parse WebSocket message");
-                            return;
-                        }
-
-                        switch (msg.event) {
-                            case 'offer':
-                                const offer = JSON.parse(msg.data);
-                                pc.setRemoteDescription(offer)
-                                    .then(() => pc.createAnswer())
-                                    .then(answer => {
-                                        pc.setLocalDescription(answer);
-                                        ws.send(JSON.stringify({ event: 'answer', data: JSON.stringify(answer) }));
-                                        addLog("Sent answer to offer");
-                                    })
-                                    .catch(err => {
-                                        addLog("Error handling offer: " + err);
-                                    });
-                                break;
-
-                            case 'candidate':
-                                const candidate = JSON.parse(msg.data);
-                                pc.addIceCandidate(new RTCIceCandidate(candidate))
-                                    .catch(err => {
-                                        addLog("Error adding ICE candidate: " + err);
-                                    });
-                                break;
-
-                            case 'chat':
-                                addChatMessage(msg.sender, msg.text);
-                                break;
-                                
-                            case 'chat_history':
-                                try {
-                                    const history = JSON.parse(msg.data);
-                                    history.forEach(item => {
-                                        addChatMessage(item.sender, item.text, new Date(item.timestamp));
-                                    });
-                                    addLog(`Loaded ${history.length} chat messages from history`);
-                                } catch (err) {
-                                    addLog("Error parsing chat history: " + err);
-                                }
-                                break;
-                                
-                            default:
-                                addLog("Unknown message type: " + msg.event);
-                        }
-                    };
-                    
-                    ws.onopen = () => {
-                        addLog("Connected to room: " + currentRoom);
-                    };
-                })
-                .catch(err => {
-                    alert("Error accessing media devices: " + err.message);
-                    addLog("Media error: " + err.message);
+            navigator.mediaDevices.getUserMedia({ 
+                video: { 
+                    width: { ideal: 1280 }, 
+                    height: { ideal: 720 } 
+                }, 
+                audio: true 
+            })
+            .then(stream => {
+                localStream = stream;
+                pc = new RTCPeerConnection({
+                    iceServers: [
+                        { urls: 'stun:stun.l.google.com:19302' }
+                    ]
                 });
+
+                // Clear previous remote videos
+                const videoGrid = document.getElementById('videoGrid');
+                while (videoGrid.children.length > 1) {
+                    videoGrid.removeChild(videoGrid.lastChild);
+                }
+
+                pc.ontrack = function (event) {
+                    if (event.track.kind === 'audio') return;
+
+                    const videoItem = document.createElement('div');
+                    videoItem.className = 'video-item';
+                    
+                    const video = document.createElement('video');
+                    video.autoplay = true;
+                    video.playsInline = true;
+                    
+                    const videoInfo = document.createElement('div');
+                    videoInfo.className = 'video-info';
+                    videoInfo.textContent = event.streams[0].id;
+                    
+                    videoItem.appendChild(video);
+                    videoItem.appendChild(videoInfo);
+                    
+                    document.getElementById('videoGrid').appendChild(videoItem);
+                    
+                    video.srcObject = event.streams[0];
+
+                    event.track.onmute = () => {
+                        video.play();
+                    };
+
+                    event.streams[0].onremovetrack = ({ track }) => {
+                        if (videoItem.parentNode) {
+                            videoItem.parentNode.removeChild(videoItem);
+                        }
+                    };
+                };
+
+                document.getElementById('localVideo').srcObject = stream;
+                stream.getTracks().forEach(track => pc.addTrack(track, stream));
+
+                ws = new WebSocket(wsURL);
+
+                pc.onicecandidate = e => {
+                    if (e.candidate) {
+                        ws.send(JSON.stringify({ event: 'candidate', data: JSON.stringify(e.candidate) }));
+                    }
+                };
+
+                ws.onclose = () => {
+                    updateStatus("Disconnected from room");
+                    alert("Disconnected from room");
+                };
+                
+                ws.onerror = evt => {
+                    updateStatus("Connection error");
+                    console.error("WebSocket error:", evt);
+                };
+
+                ws.onmessage = evt => {
+                    const msg = JSON.parse(evt.data);
+                    if (!msg) {
+                        console.error("Failed to parse WebSocket message");
+                        return;
+                    }
+
+                    switch (msg.event) {
+                        case 'offer':
+                            const offer = JSON.parse(msg.data);
+                            pc.setRemoteDescription(offer)
+                                .then(() => pc.createAnswer())
+                                .then(answer => {
+                                    pc.setLocalDescription(answer);
+                                    ws.send(JSON.stringify({ event: 'answer', data: JSON.stringify(answer) }));
+                                    updateStatus("Connected to room: " + currentRoom);
+                                })
+                                .catch(err => {
+                                    console.error("Error handling offer:", err);
+                                    updateStatus("Connection error");
+                                });
+                            break;
+
+                        case 'candidate':
+                            const candidate = JSON.parse(msg.data);
+                            pc.addIceCandidate(new RTCIceCandidate(candidate))
+                                .catch(err => {
+                                    console.error("Error adding ICE candidate:", err);
+                                });
+                            break;
+
+                        case 'chat':
+                            addChatMessage(msg.sender, msg.text);
+                            break;
+                            
+                        case 'chat_history':
+                            try {
+                                const history = JSON.parse(msg.data);
+                                history.forEach(item => {
+                                    addChatMessage(item.sender, item.text, new Date(item.timestamp));
+                                });
+                            } catch (err) {
+                                console.error("Error parsing chat history:", err);
+                            }
+                            break;
+                            
+                        default:
+                            console.log("Unknown message type:", msg.event);
+                    }
+                };
+                
+                ws.onopen = () => {
+                    updateStatus("Connected to room: " + currentRoom);
+                };
+            })
+            .catch(err => {
+                updateStatus("Media access error");
+                alert("Error accessing media devices: " + err.message);
+                console.error("Media error:", err);
+            });
         }
 
         function addChatMessage(sender, text, timestamp = new Date()) {
@@ -422,13 +522,25 @@
             const messageDiv = document.createElement('div');
             messageDiv.className = 'message';
             
-            const timeString = timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            const messageHeader = document.createElement('div');
+            messageHeader.className = 'message-header';
             
-            messageDiv.innerHTML = `
-                <span class="sender">${sender}:</span>
-                <span class="timestamp">${timeString}</span>
-                <div>${text}</div>
-            `;
+            const senderSpan = document.createElement('span');
+            senderSpan.className = 'message-sender';
+            senderSpan.textContent = sender;
+            
+            const timeSpan = document.createElement('span');
+            timeSpan.className = 'message-time';
+            timeSpan.textContent = timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            
+            const messageText = document.createElement('div');
+            messageText.textContent = text;
+            
+            messageHeader.appendChild(senderSpan);
+            messageHeader.appendChild(timeSpan);
+            
+            messageDiv.appendChild(messageHeader);
+            messageDiv.appendChild(messageText);
             
             chatDiv.appendChild(messageDiv);
             chatDiv.scrollTop = chatDiv.scrollHeight;
@@ -452,10 +564,8 @@
             document.getElementById('chatInput').value = '';
         }
 
-        function addLog(message) {
-            const logDiv = document.getElementById('logs');
-            logDiv.innerHTML += `<div>[${new Date().toLocaleTimeString()}] ${message}</div>`;
-            logDiv.scrollTop = logDiv.scrollHeight;
+        function updateStatus(message) {
+            document.getElementById('statusBar').textContent = message;
         }
 
         // Handle Enter key in chat input
@@ -464,19 +574,6 @@
                 sendChatMessage();
             }
         });
-        // Autofill fields from URL parameters
-window.addEventListener('DOMContentLoaded', () => {
-    const urlParams = new URLSearchParams(window.location.search);
-    const room = urlParams.get('room');
-    const password = urlParams.get('password');
-
-    if (room) {
-        document.getElementById('joinRoomName').value = room;
-    }
-    if (password) {
-        document.getElementById('joinRoomPassword').value = password;
-    }
-});
     </script>
 </body>
 </html>
