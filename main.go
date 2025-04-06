@@ -3,11 +3,13 @@ package main
 import (
 	"encoding/json"
 	"flag"
+	"fmt"
 	"net/http"
 	"os"
 	"sync"
 	"text/template"
 	"time"
+	verifytoken "webrtc-app/test-verify-token"
 
 	"github.com/gorilla/websocket"
 	"github.com/pion/logging"
@@ -24,11 +26,41 @@ var (
 	}
 	indexTemplate = &template.Template{}
 
-	rooms     = make(map[string]*Room)
-	roomsLock sync.RWMutex
+	rooms         = make(map[string]*Room)
+	roomPasswords = make(map[string]string) // Хранилище паролей комнат
+	roomsLock     sync.RWMutex
 
 	log = logging.NewDefaultLoggerFactory().NewLogger("sfu-ws")
 )
+
+// enableCORS добавляет CORS заголовки к ответу
+func enableCORS(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS, PUT, DELETE")
+		w.Header().Set("Access-Control-Allow-Headers", "Accept, Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization")
+
+		// Предварительный запрос (preflight) для CORS
+		if r.Method == "OPTIONS" {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+
+		next(w, r)
+	}
+}
+
+// Структуры запросов для API
+type CreateRoomRequest struct {
+	Name     string `json:"name"`
+	Password string `json:"password"`
+}
+
+type JoinRoomRequest struct {
+	Name     string `json:"name"`
+	Password string `json:"password"`
+	Username string `json:"username"`
+}
 
 // ChatMessage представляет сообщение в чате
 type ChatMessage struct {
@@ -41,7 +73,7 @@ type Room struct {
 	Name        string
 	Peers       []peerConnectionState
 	TrackLocals map[string]*webrtc.TrackLocalStaticRTP
-	ChatHistory []ChatMessage // История сообщений чата
+	ChatHistory []ChatMessage
 	ListLock    sync.RWMutex
 }
 
@@ -244,52 +276,170 @@ func main() {
 		}
 	}()
 
-	// Read index.html from disk into memory, serve whenever anyone requests /
-	indexHTML, err := os.ReadFile("index.html")
+	// Read index.html from disk into memory
+	indexHTML, err := os.ReadFile("static/index.html")
 	if err != nil {
 		panic(err)
 	}
 	indexTemplate = template.Must(template.New("").Parse(string(indexHTML)))
 
-	// websocket handler
-	http.HandleFunc("/websocket", websocketHandler)
+	// API endpoints с CORS
+	http.HandleFunc("/api/create-room", enableCORS(createRoomHandler))
+	http.HandleFunc("/api/check-room", enableCORS(checkRoomHandler))
+	http.HandleFunc("/websocket", enableCORS(websocketHandler))
+	http.HandleFunc("/", enableCORS(func(w http.ResponseWriter, r *http.Request) {
+		// верифицируем токен пользователя
+		// рабочик токен Token 4b4d65e2c6987c60be6231febe98a064b7167ae4
+		authToken := r.Header.Get("Authorization")
+		validauthToken, _ := verifytoken.ValidateToken(authToken)
+		fmt.Println(authToken)
+		if !validauthToken {
+			http.Error(w, "Invalid token", http.StatusUnauthorized)
+			return
+		}
 
-	// index.html handler
-	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		if err = indexTemplate.Execute(w, "ws://"+r.Host+"/websocket"); err != nil {
 			log.Errorf("Failed to parse index template: %v", err)
 		}
-	})
+	}))
 
-	// start HTTP server
 	log.Infof("Server started on: %s", *addr)
-	if err = http.ListenAndServe(*addr, nil); err != nil { //nolint: gosec
+	if err = http.ListenAndServe(*addr, nil); err != nil {
 		log.Errorf("Failed to start http server: %v", err)
 	}
 }
 
-// Handle incoming websockets
-func websocketHandler(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	roomName := r.URL.Query().Get("room")
-	username := r.URL.Query().Get("username") // Получаем имя пользователя из URL
-	if roomName == "" {
-		http.Error(w, "missing room", http.StatusBadRequest)
+// Обработчик создания комнаты
+func createRoomHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	if username == "" {
-		username = "anonymous" // Значение по умолчанию
+
+	var req CreateRoomRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
 	}
+
+	if req.Name == "" || req.Password == "" {
+		http.Error(w, "Room name and password are required", http.StatusBadRequest)
+		return
+	}
+
+	roomsLock.Lock()
+	defer roomsLock.Unlock()
+
+	if _, exists := rooms[req.Name]; exists {
+		http.Error(w, "Room already exists", http.StatusConflict)
+		return
+	}
+
+	// Создаем комнату
+	room := &Room{
+		Name:        req.Name,
+		TrackLocals: make(map[string]*webrtc.TrackLocalStaticRTP),
+		ChatHistory: make([]ChatMessage, 0),
+	}
+	rooms[req.Name] = room
+	roomPasswords[req.Name] = req.Password
+
+	w.Header().Set("Content-Type", "application/json")
+	// "uri": fmt.Sprintf("https://3449009-eq23140.twc1.net/?room=%s&password=%s",
+	// 		req.Name, req.Password),
+	json.NewEncoder(w).Encode(map[string]string{
+		"status":   "success",
+		"room":     req.Name,
+		"password": req.Password,
+		"uri": fmt.Sprintf("http://localhost:8080/?room=%s&password=%s",
+			req.Name, req.Password),
+	})
+}
+
+// Обработчик проверки комнаты
+func checkRoomHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req JoinRoomRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	roomsLock.RLock()
+	defer roomsLock.RUnlock()
+
+	password, exists := roomPasswords[req.Name]
+	if !exists {
+		http.Error(w, "Room does not exist", http.StatusNotFound)
+		return
+	}
+
+	if password != req.Password {
+		http.Error(w, "Invalid password", http.StatusUnauthorized)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{
+		"status": "success",
+		"room":   req.Name,
+	})
+}
+
+// Handle incoming websockets
+// Модифицированный websocketHandler с проверкой пароля
+func websocketHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	roomName := r.URL.Query().Get("room")
+	username := r.URL.Query().Get("username")
+	password := r.URL.Query().Get("password")
+
+	if roomName == "" || password == "" {
+		http.Error(w, "room and password are required", http.StatusBadRequest)
+		return
+	}
+
+	// Проверяем пароль комнаты
+	roomsLock.RLock()
+	roomPassword, roomExists := roomPasswords[roomName]
+	roomsLock.RUnlock()
+
+	if !roomExists {
+		http.Error(w, "Room does not exist", http.StatusNotFound)
+		return
+	}
+
+	if roomPassword != password {
+		http.Error(w, "Invalid password", http.StatusUnauthorized)
+		return
+	}
+
+	if username == "" {
+		username = "anonymous"
+	}
+
+	// // верифицируем токен пользователя
+	// // рабочик токен Token 4b4d65e2c6987c60be6231febe98a064b7167ae4
+	// authToken := r.Header.Get("Authorization")
+	// validauthToken, _ := verifytoken.ValidateToken(authToken)
+
+	// if !validauthToken {
+	// 	http.Error(w, "Invalid token", http.StatusUnauthorized)
+	// 	return
+	// }
 
 	roomsLock.Lock()
 	room, ok := rooms[roomName]
 	if !ok {
-		room = &Room{
-			Name:        roomName,
-			TrackLocals: make(map[string]*webrtc.TrackLocalStaticRTP),
-			ChatHistory: make([]ChatMessage, 0),
-		}
-		rooms[roomName] = room
+		// Это не должно происходить, так как мы уже проверили roomPasswords
+		http.Error(w, "Room configuration error", http.StatusInternalServerError)
+		roomsLock.Unlock()
+		return
 	}
 	roomsLock.Unlock()
 
